@@ -1,0 +1,41 @@
+#map {
+    height: 100vh;
+    width: 100%;
+}
+
+.legend {
+    background: rgba(255,255,255,0.95);
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    font-family: Arial;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.legend-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.legend-color {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+}
+
+.filter-panel {
+    background: white;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    font-family: Arial;
+    font-size: 12px;
+}
