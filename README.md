@@ -37,10 +37,10 @@ The map includes custom marker styling, filter and legend controls, and a search
 
 ## Data Credit
 
-Primary source used for brewery stop data:
+Primary source used for brewery data:
 
 - Washington Beer Blog: https://washingtonbeerblog.com/seattle-breweries-beer-stops/
 
-Repository GeoJSON used by the app:
+Updated with addional food info. Repository GeoJSON used by the app:
 
 - `Seattle_breweries_final.geojson`
