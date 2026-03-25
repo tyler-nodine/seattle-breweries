@@ -21,7 +21,55 @@ function getColor(provider) {
         "adjacent": "#e41a1c",
         "light snacks": "#616161",
         "none": "#9e9e9e"
-    }[provider] || "#333";
+    }[provider] || "#9e9e9e";
+}
+
+function getAwesomeMarkerColor(provider) {
+    provider = (provider || "").toLowerCase();
+
+    return {
+        "kitchen": "purple",
+        "food truck": "orange",
+        "rotating food truck": "blue",
+        "adjacent": "red",
+        "light snacks": "gray",
+        "none": "lightgray"
+    }[provider] || "lightgray";
+}
+
+function createAwesomeMarker(provider) {
+    const markerColor = getAwesomeMarkerColor(provider);
+
+    if (window.L && L.AwesomeMarkers && L.AwesomeMarkers.icon) {
+        return L.AwesomeMarkers.icon({
+            icon: 'beer',
+            markerColor,
+           // font-size: 18px,
+            prefix: 'fa',
+            spin: false
+        });
+    }
+
+    // Fallback to default icon if plugin not loaded
+    console.warn('AwesomeMarkers not loaded; using default Leaflet icon fallback.');
+    return L.icon({
+        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    });
+}
+
+function createLabelIcon(name) {
+    return L.divIcon({
+        className: "brewery-text-label",
+        html: `<span class="brewery-label-text">${name || ""}</span>`,
+        iconSize: [1, 1],
+        iconAnchor: [-20, 34]
+    });
 }
 
 // -------------------- POPUP --------------------
@@ -121,6 +169,27 @@ function makePopup(props) {
 // -------------------- LOAD DATA --------------------
 // Store reference to markers for filtering
 let breweryMarkers = {};
+const LABEL_VISIBILITY_METERS = 3000; // Show labels when map width is less than this in meters
+
+function isWithinLabelZoomThreshold() {
+    const bounds = map.getBounds();
+    const center = bounds.getCenter();
+    const westPoint = L.latLng(center.lat, bounds.getWest());
+    const eastPoint = L.latLng(center.lat, bounds.getEast());
+    const visibleWidthMeters = westPoint.distanceTo(eastPoint);
+    return visibleWidthMeters <= LABEL_VISIBILITY_METERS;
+}
+
+function updateLabelVisibility() {
+    const mapElement = map.getContainer();
+    if (isWithinLabelZoomThreshold()) {
+        mapElement.classList.add("labels-visible");
+    } else {
+        mapElement.classList.remove("labels-visible");
+    }
+}
+
+map.on("zoomend resize", updateLabelVisibility);
 
 fetch("https://raw.githubusercontent.com/tyler-nodine/seattle-breweries/main/Seattle_breweries_final.geojson")
     .then(res => res.json())
@@ -130,24 +199,28 @@ fetch("https://raw.githubusercontent.com/tyler-nodine/seattle-breweries/main/Sea
             (feature.properties.Type || "").toLowerCase() !== "beer bar and/or bottleshop"
         );
 
-        L.geoJSON(data, {
+        const breweryLayer = L.geoJSON(data, {
 
             pointToLayer: function(feature, latlng) {
-                const circle = L.circleMarker(latlng, {
-                    radius: 6,
-                    fillColor: getColor(feature.properties.provider_type),
-                    color: "#fff",
-                    weight: 1,
-                    fillOpacity: 0.9
+                const marker = L.marker(latlng, {
+                    icon: createAwesomeMarker(feature.properties.provider_type)
                 });
-                
+
+                const labelMarker = L.marker(latlng, {
+                    icon: createLabelIcon(feature.properties.name),
+                    interactive: false,
+                    keyboard: false,
+                    zIndexOffset: -1000
+                }).addTo(map);
+
                 // Store marker reference with its properties for filtering
                 breweryMarkers[feature.properties.name] = {
-                    marker: circle,
+                    marker,
+                    labelMarker,
                     properties: feature.properties
                 };
-                
-                return circle;
+
+                return marker;
             },
 
             onEachFeature: function(feature, layer) {
@@ -155,6 +228,17 @@ fetch("https://raw.githubusercontent.com/tyler-nodine/seattle-breweries/main/Sea
             }
 
         }).addTo(map);
+
+        const layerBounds = breweryLayer.getBounds();
+        if (layerBounds.isValid()) {
+            map.fitBounds(layerBounds, {
+    paddingTopLeft: [24, 120],
+    paddingBottomRight: [24, 24],
+    maxZoom: 14
+});
+        }
+
+        updateLabelVisibility();
 
     });
 
@@ -211,8 +295,14 @@ function applyFilters() {
         // Show marker if all criteria match
         if (providerMatch && dogsMatch && kidsMatch && seatingMatch) {
             item.marker.addTo(map);
+            if (item.labelMarker) {
+                item.labelMarker.addTo(map);
+            }
         } else {
             map.removeLayer(item.marker);
+            if (item.labelMarker) {
+                map.removeLayer(item.labelMarker);
+            }
         }
     });
 }
@@ -261,6 +351,7 @@ filterPanel.onAdd = function () {
         line-height: 1.6;
         box-shadow: 0 2px 6px rgba(0,0,0,0.2);
         min-width: 160px;
+        color: #666;
     `;
     
     filterContent.innerHTML = `
@@ -370,6 +461,7 @@ legend.onAdd = function () {
         font-family: Arial;
         font-size: 12px;
         line-height: 1.4;
+        color: #666;
     `;
     
     legendContent.innerHTML = `
@@ -434,13 +526,21 @@ title.onAdd = function () {
             padding: 4px 8px;
             border-radius: 12px;
             font-family: 'Fredoka One', 'Quicksand', sans-serif;
-            font-size: 18px;
-            font-weight: 700;
-            color: #D84315;
             box-shadow: 0 8px 12px rgba(0,0,0,0.3);
-            letter-spacing: 0.5px;
         ">
-            What's The Food Truck?!
+            <div style="
+                font-size: 18px;
+                font-weight: 700;
+                color: #df6f00; 
+                letter-spacing: 0.5px;
+            ">What's The Food Truck?</div>
+            <div style="
+                font-size: 12px;
+                font-weight: 400;
+                color: #df6f00;
+                margin-top: 1px;
+                letter-spacing: 0.2px;
+            ">See what there is to eat at Seattle breweries</div>
         </div>
     `;
     
@@ -448,3 +548,72 @@ title.onAdd = function () {
 };
 
 title.addTo(map);
+
+// -------------------- SEARCH BAR --------------------
+const searchControl = L.control({ position: "topleft" });
+
+searchControl.onAdd = function () {
+    const container = L.DomUtil.create("div", "search-container");
+
+    container.innerHTML = `
+        <div class="search-box">
+            <div class="search-input-wrap">
+                <i class="fa fa-search search-icon" aria-hidden="true"></i>
+                <input id="brewery-search" type="text" placeholder="Search breweries..." aria-label="Search breweries" autocomplete="off" />
+            </div>
+            <ul id="search-results"></ul>
+        </div>
+    `;
+
+    // Prevent map click/drag/scroll events from passing through the search box
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+
+    const input = container.querySelector("#brewery-search");
+    const results = container.querySelector("#search-results");
+
+    input.addEventListener("input", function () {
+        const q = this.value.trim().toLowerCase();
+        results.innerHTML = "";
+
+        if (!q) {
+            results.style.display = "none";
+            return;
+        }
+
+        const matches = Object.values(breweryMarkers)
+            .filter(item => (item.properties.name || "").toLowerCase().includes(q))
+            .slice(0, 8);
+
+        if (matches.length === 0) {
+            results.style.display = "none";
+            return;
+        }
+
+        matches.forEach(item => {
+            const li = document.createElement("li");
+            li.textContent = item.properties.name;
+            li.addEventListener("click", function () {
+                const latlng = item.marker.getLatLng();
+                map.flyTo(latlng, 17, { duration: 1 });
+                item.marker.openPopup();
+                results.style.display = "none";
+                input.value = item.properties.name;
+            });
+            results.appendChild(li);
+        });
+
+        results.style.display = "block";
+    });
+
+    // Close dropdown when clicking elsewhere
+    document.addEventListener("click", function (e) {
+        if (!container.contains(e.target)) {
+            results.style.display = "none";
+        }
+    });
+
+    return container;
+};
+
+searchControl.addTo(map);
