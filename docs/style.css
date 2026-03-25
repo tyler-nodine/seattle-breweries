@@ -78,6 +78,13 @@
     display: block;
 }
 
+/* Prevent iPhone browser auto-zoom on focused inputs */
+@supports (-webkit-touch-callout: none) {
+    .search-box input {
+        font-size: 16px;
+    }
+}
+
 .search-box input:focus {
     border-color: #888;
 }
